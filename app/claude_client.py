@@ -1,4 +1,6 @@
 import os
+from app.eval.metrics import evaluate
+from app.eval.logger import log_eval, create_eval_table
 from anthropic import Anthropic
 from dotenv import load_dotenv
 from app.rag.retriever import retrieve_chunks
@@ -58,7 +60,7 @@ def answer_question(
 
     Alternative: Some RAG systems re-rank chunks after retrieval using
     a cross-encoder model before sending to the LLM. This improves
-    quality but adds latency. For our use case single-stage retrieval
+    quality but adds latency. For my use case single-stage retrieval
     is sufficient.
     """
     # Step 1: Retrieve relevant chunks
@@ -104,6 +106,21 @@ Context:
         "content": answer
     })
 
+    # Step 6: Evaluate and log
+    print("Evaluating response...")
+    scores = evaluate(query, answer, chunks)
+    log_eval(
+        query=query,
+        answer=answer,
+        scores=scores,
+        usage={
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens
+        },
+        company_filter=company,
+        top_k=top_k
+    )
+
     return {
         "answer": answer,
         "sources": chunks,
@@ -112,12 +129,15 @@ Context:
         "usage": {
             "input_tokens": response.usage.input_tokens,
             "output_tokens": response.usage.output_tokens
-        }
+        },
+        "eval_scores": scores
     }
 
 
 if __name__ == "__main__":
     # Test the full pipeline end to end
+    if __name__ == "__main__":
+        create_eval_table()
     print("Testing RAG pipeline...\n")
 
     result = answer_question(
@@ -131,3 +151,8 @@ if __name__ == "__main__":
     for s in result['sources']:
         print(f"  - {s['company']} (similarity: {s['similarity']})")
     print(f"\nTokens used: {result['usage']['input_tokens']} in, {result['usage']['output_tokens']} out")
+    print(f"\nEval Scores:")
+    print(f"  Relevance:       {result['eval_scores']['relevance']}")
+    print(f"  Faithfulness:    {result['eval_scores']['faithfulness']}")
+    print(f"  Answer Quality:  {result['eval_scores']['answer_quality']}")
+    print(f"  Composite:       {result['eval_scores']['composite_score']}")
